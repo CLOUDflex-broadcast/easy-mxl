@@ -1,6 +1,6 @@
 {
   "name": "easy-mxl",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "EASY MXL - launch and manage DMF-MXL media function containers on a Docker host, inspect MXL domains and flows, stream logs and open terminals.",
   "type": "module",
   "license": "MIT",
