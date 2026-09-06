@@ -1,0 +1,19 @@
+# Build context filter for deploy/Dockerfile (build from the repository root:
+#   docker build -t easy-mxl -f deploy/Dockerfile . )
+node_modules
+dist
+.git
+.gitignore
+test
+docs
+coverage
+*.log
+npm-debug.log*
+.env
+.DS_Store
+.github
+release
+site
+*.zip
+mkdocs.yml
+install.sh

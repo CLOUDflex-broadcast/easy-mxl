@@ -1,0 +1,60 @@
+site_name: EASY MXL
+site_description: The easiest way to do MXL.
+site_url: https://cloudflex-broadcast.github.io/easy-mxl/
+repo_url: https://github.com/CLOUDflex-broadcast/easy-mxl
+repo_name: CLOUDflex-broadcast/easy-mxl
+edit_uri: edit/main/docs/
+copyright: MIT
+docs_dir: docs
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  palette:
+    - scheme: default
+      primary: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - How it works: how-it-works.md
+  - Apps: apps.md
+  - Configuration: configuration.md
+  - Deployment: deployment.md
+  - HTTP API: api.md
+  - Troubleshooting: troubleshooting.md
+  - Development: development.md
+  - Design contract: DESIGN.md

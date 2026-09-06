@@ -1,0 +1,63 @@
+{
+  "name": "easy-mxl",
+  "version": "1.1.0",
+  "description": "EASY MXL - launch and manage DMF-MXL media function containers on a Docker host, inspect MXL domains and flows, stream logs and open terminals.",
+  "type": "module",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=20.10"
+  },
+  "bin": {
+    "easy-mxl": "dist/bin/easy-mxl.js"
+  },
+  "main": "dist/src/server.js",
+  "files": [
+    "dist",
+    "deploy",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc && node dist/scripts/copy-static.js",
+    "start": "node dist/bin/easy-mxl.js",
+    "dev": "npm run build && concurrently --kill-others --names compiler,server \"tsc --watch --preserveWatchOutput\" \"node --watch dist/bin/easy-mxl.js\"",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "npm run typecheck",
+    "release": "bash scripts/build-release.sh"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "dockerode": "^4.0.7",
+    "express": "^5.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^3.3.47",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.20.1",
+    "@types/ws": "^8.18.1",
+    "concurrently": "^9.2.4",
+    "typescript": "^5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CLOUDflex-broadcast/easy-mxl.git"
+  },
+  "homepage": "https://cloudflex-broadcast.github.io/easy-mxl/",
+  "bugs": {
+    "url": "https://github.com/CLOUDflex-broadcast/easy-mxl/issues"
+  },
+  "keywords": [
+    "mxl",
+    "dmf",
+    "ebu",
+    "broadcast",
+    "docker",
+    "media-exchange-layer",
+    "nmos"
+  ]
+}

@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scripts:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax check
+        run: bash -n install.sh scripts/install-ubuntu24.sh scripts/build-release.sh
+      - name: shellcheck
+        run: shellcheck -S warning install.sh scripts/install-ubuntu24.sh scripts/build-release.sh
+
+  package:
+    name: Release tarball (dry run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: bash scripts/build-release.sh
+      - name: Smoke-test the prebuilt tarball
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          mkdir -p /tmp/smoke && tar -C /tmp/smoke -xzf "release/easy-mxl-${version}.tar.gz"
+          cd "/tmp/smoke/easy-mxl-${version}"
+          test -f .release-prebuilt
+          node dist/bin/easy-mxl.js --version
+          node dist/bin/easy-mxl.js --help | grep -q -- '--domain-root'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: easy-mxl-tarball
+          path: |
+            release/*.tar.gz
+            release/SHA256SUMS
+          retention-days: 7
+
+  docs:
+    name: Docs build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r docs/requirements.txt
+      - run: mkdocs build --strict

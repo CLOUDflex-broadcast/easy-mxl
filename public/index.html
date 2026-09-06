@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>EASY MXL</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 rx=%276%27 fill=%27%230b1220%27/%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%277%27 fill=%27%233b82f6%27/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="vendor/xterm.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/containers" aria-label="EASY MXL home">EASY <span>MXL</span></a>
+    <span class="docker-dot unknown" id="docker-dot" role="status" title="Docker: checking…" aria-label="Docker status"></span>
+    <span class="domain-root mono" id="domain-root" title="Domain root">…</span>
+    <nav class="nav" aria-label="Main">
+      <a href="#/containers" data-route="containers">Containers</a>
+      <a href="#/domains" data-route="domains">Domains &amp; Flows</a>
+    </nav>
+    <span class="events-dot" id="events-dot" title="Live events: connecting…" aria-hidden="true"></span>
+    <button class="btn primary" id="btn-launch" type="button">Launch app</button>
+  </header>
+  <main id="view" class="view" tabindex="-1"></main>
+  <div id="panels"></div>
+  <div id="modals"></div>
+  <div id="toasts" class="toasts" role="region" aria-live="polite" aria-label="Notifications"></div>
+  <script src="vendor/xterm.js"></script>
+  <script src="vendor/addon-fit.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

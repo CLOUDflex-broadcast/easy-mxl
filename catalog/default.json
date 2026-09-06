@@ -1,0 +1,200 @@
+[
+  {
+    "id": "test-generator",
+    "name": "Test Generator",
+    "description": "Synthetic colour-bar video, two tone audio flows and an optional ancillary-data (captions + SCTE-104) flow written to an MXL domain. The easiest way to get a first flow into a domain.",
+    "category": "source",
+    "image": "ghcr.io/cbcrc/test-generator:latest",
+    "containerName": "test-generator",
+    "webUI": { "containerPort": 9600, "path": "/", "docsPath": "/docs" },
+    "ports": [ { "containerPort": 9600, "hostPort": 9600, "protocol": "tcp" } ],
+    "domainMount": { "containerPath": "/mxl-domain", "readOnly": false, "envVar": "MXL_DOMAIN" },
+    "restartPolicy": "unless-stopped",
+    "notes": "Open the web UI, pick the domain under /mxl-domain, name the flows and press Start. Flow UUIDs are derived from the group hint.",
+    "source": "https://github.com/cbcrc/mxl-hands-on/blob/main/docker/exercise-4/docker-compose.yml"
+  },
+  {
+    "id": "mxl-info-gui",
+    "name": "MXL Info GUI",
+    "description": "Read-only dashboard wrapping the mxl-info CLI: domains, active/inactive/stale flows, per-flow head index and latency.",
+    "category": "monitoring",
+    "image": "ghcr.io/cbcrc/mxl-info-gui:latest",
+    "containerName": "mxl-info-gui",
+    "webUI": { "containerPort": 9600, "path": "/", "docsPath": "/docs" },
+    "ports": [ { "containerPort": 9600, "hostPort": 9699, "protocol": "tcp" } ],
+    "domainMount": { "containerPath": "/mxl-domain", "readOnly": true, "envVar": "MXL_DOMAIN" },
+    "restartPolicy": "unless-stopped",
+    "source": "https://github.com/cbcrc/mxl-hands-on/blob/main/docker/exercise-4/docker-compose.yml"
+  },
+  {
+    "id": "mediamtx",
+    "name": "MediaMTX (WebRTC relay)",
+    "description": "WHIP/WHEP relay used by MXL to WebRTC and WebRTC to MXL. Runs with host networking so ICE candidates carry the real host IP (ports 8554 RTSP, 8889 WebRTC, 8189/udp ICE).",
+    "category": "infrastructure",
+    "image": "bluenviron/mediamtx:latest",
+    "containerName": "mediamtx",
+    "networkMode": "host",
+    "restartPolicy": "unless-stopped",
+    "notes": "No web UI of its own. Launched automatically as a dependency of mxl2webrtc and webrtc2mxl.",
+    "source": "https://github.com/cbcrc/mxl-hands-on/blob/main/docker/exercise-4/docker-compose.yml"
+  },
+  {
+    "id": "mxl2webrtc",
+    "name": "MXL to WebRTC",
+    "description": "Reads one MXL video and/or audio flow and plays it in the browser over WebRTC (MediaMTX relay or direct WHEP).",
+    "category": "output",
+    "image": "ghcr.io/cbcrc/mxl2webrtc:latest",
+    "containerName": "mxl2webrtc",
+    "webUI": { "containerPort": 9600, "path": "/", "docsPath": "/docs" },
+    "ports": [
+      { "containerPort": 9600, "hostPort": 9601, "protocol": "tcp" },
+      { "containerPort": 8200, "hostPort": 8200, "protocol": "udp", "rangeEnd": 8210 }
+    ],
+    "domainMount": { "containerPath": "/mxl-domain", "readOnly": true, "envVar": "MXL_DOMAIN" },
+    "env": {
+      "MEDIAMTX_WHIP_URL": "http://host.docker.internal:8889/mxl2webrtc/whip",
+      "MEDIAMTX_WEBRTC_URL": "http://localhost:8889"
+    },
+    "extraHosts": [ "host.docker.internal:host-gateway" ],
+    "requires": [ "mediamtx" ],
+    "restartPolicy": "unless-stopped",
+    "notes": "The x264 encoder is installed from the Ubuntu archive on first start, so the container needs network access once.",
+    "source": "https://github.com/cbcrc/mxl-hands-on/blob/main/docker/exercise-4/docker-compose.yml"
+  },
+  {
+    "id": "file-player",
+    "name": "File Player",
+    "description": "Loops an MP4/TS clip from a host folder and publishes its video and audio as MXL flows.",
+    "category": "source",
+    "image": "ghcr.io/cbcrc/file-player:latest",
+    "containerName": "file-player",
+    "webUI": { "containerPort": 9600, "path": "/", "docsPath": "/docs" },
+    "ports": [ { "containerPort": 9600, "hostPort": 9602, "protocol": "tcp" } ],
+    "domainMount": { "containerPath": "/mxl-domain", "readOnly": false, "envVar": "MXL_DOMAIN" },
+    "hostPaths": [
+      { "key": "clips", "label": "Clips folder on the host (.mp4 / .ts files)", "containerPath": "/home/file", "readOnly": true, "required": true, "default": "" }
+    ],
+    "restartPolicy": "unless-stopped",
+    "notes": "The FFmpeg decoders (gstreamer1.0-libav) are installed on first start, so the container needs network access once.",
+    "source": "https://github.com/cbcrc/mxl-hands-on/blob/main/docker/exercise-4/docker-compose.yml"
+  },
+  {
+    "id": "hls2mxl",
+    "name": "HLS to MXL Gateway",
+    "description": "Ingests a live HLS stream and republishes it as one MXL video flow and one MXL audio flow.",
+    "category": "source",
+    "image": "ghcr.io/cbcrc/hls2mxl:latest",
+    "containerName": "hls2mxl",
+    "webUI": { "containerPort": 9600, "path": "/", "docsPath": "/docs" },
+    "ports": [ { "containerPort": 9600, "hostPort": 9603, "protocol": "tcp" } ],
+    "domainMount": { "containerPath": "/mxl-domain", "readOnly": false, "envVar": "MXL_DOMAIN" },
+    "restartPolicy": "unless-stopped",
+    "notes": "Reference 1080p60 streams: https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8 and https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+    "source": "https://github.com/cbcrc/mxl-hands-on/blob/main/docker/exercise-4/docker-compose.yml"
+  },
+  {
+    "id": "input-selector",
+    "name": "Input Selector",
+    "description": "Frame-accurate N-to-1 MXL video switcher (native Rust backend). Routes one of up to N input flows to a single output flow.",
+    "category": "processing",
+    "image": "ghcr.io/cbcrc/input-selector:latest",
+    "containerName": "input-selector",
+    "webUI": { "containerPort": 9600, "path": "/" },
+    "ports": [ { "containerPort": 9600, "hostPort": 9604, "protocol": "tcp" } ],
+    "domainMount": { "containerPath": "/mxl-domain", "readOnly": false, "envVar": "MXL_DOMAIN" },
+    "env": { "MAX_INPUTS": "{{maxInputs}}" },
+    "params": [
+      { "key": "maxInputs", "label": "Number of input slots", "default": "3", "help": "Selectable input slots in the UI and router." }
+    ],
+    "restartPolicy": "unless-stopped",
+    "source": "https://github.com/cbcrc/mxl-hands-on/blob/main/docker/exercise-4/docker-compose.yml"
+  },
+  {
+    "id": "html5-keyer",
+    "name": "HTML5 Keyer",
+    "description": "Composites an HTML5 graphics page (embedded Chromium) over a live MXL video flow, or runs an OGraf teleprompter, and publishes the result as an MXL flow.",
+    "category": "processing",
+    "image": "ghcr.io/cbcrc/html5-keyer:latest",
+    "containerName": "html5-keyer",
+    "webUI": { "containerPort": 9600, "path": "/", "docsPath": "/docs" },
+    "ports": [ { "containerPort": 9600, "hostPort": 9605, "protocol": "tcp" } ],
+    "domainMount": { "containerPath": "/mxl-domain", "readOnly": false, "envVar": "MXL_DOMAIN" },
+    "env": { "KEYER_DEFAULT_MODE": "{{defaultMode}}" },
+    "params": [
+      { "key": "defaultMode", "label": "UI mode on load (key or prompt)", "default": "key", "help": "key = graphics keying, prompt = teleprompter." }
+    ],
+    "extraHosts": [ "host.docker.internal:host-gateway" ],
+    "shmSize": "1g",
+    "restartPolicy": "unless-stopped",
+    "notes": "Needs a 1 GB /dev/shm for Chromium. To reach a graphics server on the host use http://host.docker.internal:<port>/ inside the keyer UI.",
+    "source": "https://github.com/cbcrc/mxl-hands-on/blob/main/docker/exercise-4/docker-compose.yml"
+  },
+  {
+    "id": "webrtc2mxl",
+    "name": "WebRTC to MXL",
+    "description": "Publishes a browser camera/microphone (WebRTC via MediaMTX) into an MXL domain as video and audio flows.",
+    "category": "source",
+    "image": "ghcr.io/cbcrc/webrtc2mxl:latest",
+    "containerName": "webrtc2mxl",
+    "webUI": { "containerPort": 9600, "path": "/", "docsPath": "/docs" },
+    "ports": [ { "containerPort": 9600, "hostPort": 9606, "protocol": "tcp" } ],
+    "domainMount": { "containerPath": "/mxl-domain", "readOnly": false, "envVar": "MXL_DOMAIN" },
+    "env": {
+      "MEDIAMTX_WHEP_URL": "http://host.docker.internal:8889/webrtc2mxl/whep",
+      "MEDIAMTX_WHIP_URL": "http://localhost:8889/webrtc2mxl/whip"
+    },
+    "extraHosts": [ "host.docker.internal:host-gateway" ],
+    "requires": [ "mediamtx" ],
+    "restartPolicy": "unless-stopped",
+    "source": "https://github.com/cbcrc/mxl-hands-on/blob/main/docker/exercise-4/docker-compose.yml"
+  },
+  {
+    "id": "mxl-writer",
+    "name": "Test Writer (mxl-gst-testsrc)",
+    "description": "Headless GStreamer test source from the hands-on exercises 1-3: writes a 1080p29.97 v210 video flow and a stereo audio flow into the domain mounted at /domain. No web UI.",
+    "category": "tools",
+    "image": "ghcr.io/cbcrc/mxl-writer:latest",
+    "containerName": "mxl-writer",
+    "user": "1000:1000",
+    "domainMount": { "containerPath": "/domain", "readOnly": false },
+    "cmd": [ "/app/mxl-gst-testsrc", "-d", "/domain", "-g", "{{groupHint}}", "-v", "/app/v210_flow.json", "-a", "/app/audio_flow.json", "-t", "{{overlayText}}" ],
+    "params": [
+      { "key": "groupHint", "label": "Group hint", "default": "demo-app-writer", "help": "Group name used in the flows' grouphint tag. Use a different value per writer instance." },
+      { "key": "overlayText", "label": "Overlay text", "default": "EBU DMF MXL" }
+    ],
+    "restartPolicy": "unless-stopped",
+    "notes": "Flow IDs are fixed by the JSON baked into the image (video 5fbec3b1-…, audio b3bb5be7-…), so run at most one instance per domain. The domain directory must be writable by uid 1000.",
+    "source": "https://github.com/cbcrc/mxl-hands-on/blob/main/docker/exercise-3/docker-compose.yml"
+  },
+  {
+    "id": "mxl-reader",
+    "name": "Reader / mxl-info shell",
+    "description": "Read-only container with the mxl-info CLI. By default it runs `watch mxl-info -d /domain -l`; open a terminal on it to run `/app/mxl-info -d /domain -f <flow-id>`.",
+    "category": "tools",
+    "image": "ghcr.io/cbcrc/mxl-reader:latest",
+    "containerName": "mxl-reader",
+    "user": "1000:1000",
+    "domainMount": { "containerPath": "/domain", "readOnly": true },
+    "tty": true,
+    "stdinOpen": true,
+    "restartPolicy": "unless-stopped",
+    "notes": "Useful for checking what the official SDK reports (mxl-info) next to what EASY MXL shows.",
+    "source": "https://github.com/cbcrc/mxl-hands-on/blob/main/docker/exercise-1/docker-compose.yaml"
+  },
+  {
+    "id": "mxl-clip-player",
+    "name": "Clip Player (looping filesrc)",
+    "description": "Loops one MPEG-TS clip from the host into an MXL video flow using mxl-gst-looping-filesrc. Headless, no web UI.",
+    "category": "tools",
+    "image": "ghcr.io/cbcrc/mxl-clip-player:latest",
+    "containerName": "mxl-clip-player",
+    "domainMount": { "containerPath": "/domain", "readOnly": false },
+    "hostPaths": [
+      { "key": "clip", "label": "MPEG-TS clip file on the host", "containerPath": "/app/clip.ts", "readOnly": true, "required": true, "default": "" }
+    ],
+    "cmd": [ "-d", "/domain", "-i", "/app/clip.ts" ],
+    "restartPolicy": "unless-stopped",
+    "notes": "Runs as root because the entrypoint installs gstreamer1.0-libav on first start (needs network access once).",
+    "source": "https://github.com/cbcrc/mxl-hands-on/blob/main/docker/exercise-3/docker-compose.yml"
+  }
+]

@@ -1,0 +1,74 @@
+name: Release
+
+# Publishing a release:
+#   npm version minor -m "Release v%s"      # bumps package.json and creates the tag
+#   git push --follow-tags
+# This workflow then verifies the tag, builds the app and tarball and
+# creates the GitHub Release with the artifacts. The Docker image workflow
+# publishes ghcr.io/<owner>/easy-mxl:<version> for the same tag.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Tag must match package.json version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(node -p "require('./package.json').version")
+          if [[ "$tag" != "$version" ]]; then
+            echo "Tag v${tag} does not match package.json version ${version}" >&2
+            exit 1
+          fi
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build
+
+      - name: Build release tarball
+        run: bash scripts/build-release.sh --skip-build
+
+      - name: Smoke-test the tarball
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          mkdir -p /tmp/smoke && tar -C /tmp/smoke -xzf "release/easy-mxl-${version}.tar.gz"
+          node "/tmp/smoke/easy-mxl-${version}/dist/bin/easy-mxl.js" --version
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: EASY MXL ${{ github.ref_name }}
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            release/easy-mxl-*.tar.gz
+            release/SHA256SUMS
+            release/install.sh
+          body: |
+            ## Install or upgrade on Ubuntu
+
+            ```sh
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.sh | sudo bash
+            ```
+
+            Container image: `ghcr.io/${{ github.repository_owner }}/easy-mxl:${{ github.ref_name }}` (also tagged `latest`).
+
+            Verify the tarball with `sha256sum -c SHA256SUMS`.

@@ -1,0 +1,15 @@
+node_modules/
+npm-debug.log*
+.env
+*.log
+.DS_Store
+coverage/
+/dist/
+/tmp/
+/release/
+/site/
+*.zip
+/test
+/test
+
+/.venv-docs/

@@ -1,0 +1,66 @@
+# EASY MXL - systemd unit
+#
+# Installed by scripts/install-ubuntu24.sh, or by hand:
+#   sudo cp deploy/easy-mxl.service /etc/systemd/system/
+#   sudo cp deploy/easy-mxl.env.example /etc/default/easy-mxl   # then set EASY_MXL_TOKEN
+#   sudo systemctl daemon-reload && sudo systemctl enable --now easy-mxl
+#
+# The unit assumes the repository lives in /opt/easy-mxl with production
+# compiled distribution and production dependencies installed, and Node.js at /usr/bin/node.
+
+[Unit]
+Description=EASY MXL - DMF-MXL container and domain manager
+Documentation=file:///opt/easy-mxl/README.md
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/easy-mxl
+ExecStart=/usr/bin/node /opt/easy-mxl/dist/bin/easy-mxl.js
+
+# Listen on all interfaces so the UI is reachable from other machines. Any
+# EASY_MXL_* variable in /etc/default/easy-mxl overrides the values set here
+# (systemd applies EnvironmentFile= after Environment=), so put
+# EASY_MXL_TOKEN=... there when the host is not loopback-only.
+Environment=EASY_MXL_HOST=0.0.0.0
+Environment=NODE_ENV=production
+EnvironmentFile=-/etc/default/easy-mxl
+
+# User=root is the default because EASY MXL needs the Docker socket (which is
+# root-equivalent anyway), reads /proc/locks and /proc/<pid>/cgroup to map
+# flow writers to containers, and chowns new domain directories to
+# EASY_MXL_DOMAIN_UID/GID (1000:1000 by default) so the hands-on writer images
+# that run as uid 1000 can write into them.
+#
+# To run as an unprivileged user instead, create one that is a member of the
+# "docker" group and replace the two lines below, e.g.
+#   sudo useradd --system --home /opt/easy-mxl --shell /usr/sbin/nologin -G docker easy-mxl
+#   User=easy-mxl
+#   Group=docker
+# An unprivileged EASY MXL cannot chown domains it creates; either make the
+# service user uid 1000 or set EASY_MXL_DOMAIN_UID/GID to the service user's
+# ids in /etc/default/easy-mxl and keep the domain mode at 0775.
+User=root
+Group=root
+
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+KillSignal=SIGTERM
+LimitNOFILE=65536
+SyslogIdentifier=easy-mxl
+StandardOutput=journal
+StandardError=journal
+
+# Mild hardening that leaves the Docker socket and the tmpfs domain root
+# (/dev/shm) fully usable. Do not add PrivateDevices= or ProtectProc=; the
+# first hides /dev/shm and the second breaks /proc/<pid>/cgroup lookups.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
