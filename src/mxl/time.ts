@@ -39,8 +39,8 @@ let inflight = null;
  * @property {bigint|number|string|null} [activeWriteTimeNs] `lastWriteTime` (TAI ns) of a flow that is
  *   being written right now; used to estimate the offset when the python probe is unavailable
  * @property {(file: string, args: string[], options: object) => Promise<{ stdout: string }>} [execFile]
- *   injectable process runner (tests)
- * @property {() => number} [now] injectable clock returning Unix milliseconds (tests)
+ *   injectable process runner
+ * @property {() => number} [now] injectable clock returning Unix milliseconds
  */
 
 /**

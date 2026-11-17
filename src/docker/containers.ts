@@ -2,8 +2,8 @@
  * Container listing, inspection, lifecycle operations and the
  * `ContainerSummary` projection used by the API and the frontend.
  *
- * Every function takes the Dockerode instance as first argument so tests can
- * pass fakes. Docker errors are converted with `toHttpError`; a 304 from
+ * Every function takes the Dockerode instance as first argument (no module-level
+ * singleton). Docker errors are converted with `toHttpError`; a 304 from
  * start/stop ("already in that state") is treated as success.
  */
 import { posix as path } from 'node:path';

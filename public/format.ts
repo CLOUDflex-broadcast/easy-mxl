@@ -1,6 +1,6 @@
 /**
  * Pure formatting helpers shared by the views. No DOM access, so this module
- * can also be imported from Node tests.
+ * can also be imported from Node.
  * @module format
  */
 
