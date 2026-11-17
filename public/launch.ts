@@ -310,8 +310,11 @@ export async function openLaunchDialog({ appId = null, domain = null } = {}) {
       params.params = {};
       for (const p of f.params) {
         if (p.spec.port) {
-          const v = Number(p.input.value);
+          // A number input also accepts "9889.0" or "9.889e3"; send the plain integer.
+          const v = p.input.value.trim() === '' ? NaN : Number(p.input.value);
           if (!Number.isInteger(v) || v < 1 || v > 65535) throw new Error(`${p.spec.label || p.spec.key} must be a port between 1 and 65535.`);
+          params.params[p.spec.key] = String(v);
+          continue;
         }
         params.params[p.spec.key] = p.input.value;
       }

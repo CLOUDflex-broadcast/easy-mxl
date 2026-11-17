@@ -74,6 +74,23 @@ export function parseDockerHost(dockerHost) {
 }
 
 /**
+ * Does `config.dockerHost` point at a daemon on this machine (a local socket or pipe, or the
+ * default socket)? A `tcp://`, `http(s)://` or `ssh://` endpoint counts as another host, so
+ * checks that look at this machine's network do not describe the Docker host.
+ *
+ * @param {{ dockerHost?: string|null }} [config]
+ * @returns {boolean}
+ */
+export function isLocalDockerEndpoint(config = {}) {
+  try {
+    const opts = parseDockerHost(config && config.dockerHost);
+    return opts === null || typeof opts.socketPath === 'string';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Create a Dockerode instance honouring `config.dockerHost`; falls back to
  * Dockerode's defaults (env `DOCKER_HOST`, then the default socket) when unset.
  *

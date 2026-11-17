@@ -108,7 +108,7 @@ export function renderTemplate(str, vars = {}) {
  * @param {string} str
  * @returns {string[]}
  */
-function placeholdersIn(str) {
+export function placeholdersIn(str) {
   const out = [];
   for (const m of String(str).matchAll(TEMPLATE_RE)) out.push(m[1]);
   return out;
