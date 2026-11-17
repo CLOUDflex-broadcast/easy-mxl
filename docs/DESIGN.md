@@ -565,7 +565,7 @@ EACCES/EPERM → 403, ECONNREFUSED/ENOENT on socket → 502 `docker_unavailable`
 | `GET /api/jobs` / `GET /api/jobs/:id` | | `Job[]` / `Job` |
 | `GET /api/images` | | `[{ ref, present, id, size, created }]` for catalog images |
 | `POST /api/images/pull` | `{ image }` | `202 { jobId }` |
-| `GET /api/ports/check` | `?port=9600&protocol=tcp` | `{ port, protocol, container: {id,name,state}|null, listening: boolean }` (listening = a quick `net` bind probe on `0.0.0.0` or `[::]` failed with EADDRINUSE) |
+| `GET /api/ports/check` | `?port=9600&protocol=tcp` | `{ port, protocol, container, listening: boolean }` with `container` = `{id,name,state}` or `null` (listening = a quick `net` bind probe on `0.0.0.0` or `[::]` failed with EADDRINUSE) |
 
 `:id` for containers accepts full id, short id or name (Dockerode resolves names).
 
