@@ -133,7 +133,8 @@ Images are tagged with the release version, `major.minor` and `latest`
   but without a writer container name.
 - `/api/ports/check` probes ports from inside the EASY MXL container, so its "already
   listening on this host" hint only reflects that container; the container-binding check
-  (which app publishes the port) still works.
+  (which app publishes the port) still works. For the same reason the `port_in_use` check for
+  host-networked apps (MediaMTX) cannot see ports held by host services in this route.
 
 The image is `node:22-alpine` plus `python3` (for the TAI offset) and the production
 dependencies; `EASY_MXL_HOST=0.0.0.0` is preset and port 9700 is exposed. It carries a

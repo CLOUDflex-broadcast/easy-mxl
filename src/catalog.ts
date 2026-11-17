@@ -18,6 +18,8 @@ export const CATEGORIES = ['source', 'processing', 'output', 'monitoring', 'infr
 export const RESTART_POLICIES = ['no', 'always', 'unless-stopped', 'on-failure'];
 /** Allowed `ports[].protocol` values. */
 export const PROTOCOLS = ['tcp', 'udp', 'sctp'];
+/** Allowed `params[].port` values: the param is a port number of that protocol. */
+export const PARAM_PORT_PROTOCOLS = ['tcp', 'udp'];
 /** Allowed `imagePolicy` values: pulled from a registry, or loaded locally with `docker load`. */
 export const IMAGE_POLICIES = ['pull', 'local'];
 /** Template variables that are always available in env/cmd/entrypoint/volumes[].name. */
@@ -273,6 +275,10 @@ export function validateApp(app) {
   keyed('params', (p, f) => {
     if (p.default !== undefined && typeof p.default !== 'string') fail(`${f}.default`, 'must be a string');
     if (p.help !== undefined && typeof p.help !== 'string') fail(`${f}.help`, 'must be a string');
+    if (p.port !== undefined) {
+      if (!PARAM_PORT_PROTOCOLS.includes(p.port)) fail(`${f}.port`, `must be one of ${PARAM_PORT_PROTOCOLS.join(', ')}`);
+      if (p.default !== undefined && !(/^\d+$/.test(p.default) && isPort(Number(p.default)))) fail(`${f}.default`, 'must be a port number (1-65535) because the param is a port');
+    }
   });
 
   if (app.requires !== undefined) {

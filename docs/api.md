@@ -29,7 +29,7 @@ under `/ws`; scripts and other tools can use them the same way.
 | `GET /api/health` | | `{ ok, version, docker, domainRoot, domainRootFs, procLocksReadable, taiOffsetNs, taiSource }` |
 | `GET /api/apps` | | catalog apps with `imagePresent` and their `containers`; local-image apps add `imagePolicy`, `imageRepository`, `imageRepositories`, `localImages` |
 | `GET /api/apps/:id` | | one app |
-| `POST /api/apps/:id/launch` | `{ domain, name?, image?, hostPorts?, env?, params?, hostPaths?, launchRequires?, pull? }` | `202 { jobId }`; `409 name_conflict` when the container name exists; `404 image_not_loaded` for a local image that was not `docker load`ed; `400 image_repository_mismatch`, `unknown_dependency`, `invalid_pull_policy` |
+| `POST /api/apps/:id/launch` | `{ domain, name?, image?, hostPorts?, env?, params?, hostPaths?, launchRequires?, pull? }` | `202 { jobId }`; `409 name_conflict` when the container name exists; `409 port_in_use` when a host-networked app would bind a port that is taken on the host; `404 image_not_loaded` for a local image that was not `docker load`ed; `400 image_repository_mismatch`, `unknown_dependency`, `invalid_pull_policy`, `invalid_param`, `duplicate_port` |
 | `GET /api/containers` | | container summaries (all states) |
 | `GET /api/containers/:id` | | `{ summary, inspect }` |
 | `POST /api/containers/:id/start` (also `stop`, `restart`, `kill`) | `{ timeout? }` | `{ ok, summary }` |
@@ -59,7 +59,7 @@ Launch parameters in detail:
 | `image` | image reference override; for `imagePolicy: local` apps the loaded tag to run, its repository must be one of the app's `imageRepositories` |
 | `hostPorts` | `{ "9600/tcp": 9610 }` - host port per container port spec |
 | `env` | `{ "KEY": "value" }`, merged over the catalog `env` after templating |
-| `params` | `{ "groupHint": "cam-1" }`, template values merged over the catalog defaults |
+| `params` | `{ "groupHint": "cam-1" }`, template values merged over the catalog defaults; port params (`{ "webrtcPort": "9889" }`) must be port numbers. Params that a required app declares under the same key are passed on when that app is launched as a dependency |
 | `hostPaths` | `{ "clips": "/srv/clips" }`, absolute host path per `hostPaths[].key` |
 | `launchRequires` | `true` (default) starts or launches the apps listed in `requires` first |
 | `pull` | `missing` (default) or `always`; `always` is rejected for local images |

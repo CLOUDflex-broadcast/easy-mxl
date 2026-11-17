@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { HttpError } from '../errors.js';
 import { resolveApp } from '../catalog.js';
 import { imagePresent as isImagePresent, listLocalImages } from '../docker/images.js';
-import { buildCreateOptions, checkNameConflict, launchApp } from '../docker/launch.js';
+import { assertHostNetworkPortsFree, buildCreateOptions, checkNameConflict, launchApp } from '../docker/launch.js';
 import { getDomain, listDomains } from '../mxl/domain.js';
 
 /**
@@ -121,7 +121,7 @@ export function createAppsRouter(ctx) {
     const domain = app.domainMount && params.domain ? await getDomain(root(), params.domain) : null;
 
     // Validate everything that can be known now so the caller gets a 400 instead of a failed job.
-    const { name } = buildCreateOptions(app, params, { domain, config: ctx.config });
+    const { name, hostNetworkPorts } = buildCreateOptions(app, params, { domain, config: ctx.config });
     if (params.launchRequires !== false) {
       for (const dep of app.requires || []) {
         if (!ctx.catalogById.has(dep)) {
@@ -133,6 +133,7 @@ export function createAppsRouter(ctx) {
     if (conflict) {
       throw new HttpError(409, 'name_conflict', `A container named "${name}" already exists (${conflict.state})`, conflict);
     }
+    await assertHostNetworkPortsFree(app, hostNetworkPorts);
 
     const launchCtx = {
       config: ctx.config,
