@@ -44,8 +44,8 @@ const MAX_DATE_MS = 8.64e15;
  *   (every flow gets `active: null`); omitted → read `<procRoot>/locks` once
  * @property {number} [taiOffsetNs] TAI − UTC offset in ns; omitted → {@link getTaiOffsetNs}
  * @property {boolean} [resolveContainers=true] map writer PIDs to container ids via `<procRoot>/<pid>/cgroup`
- * @property {string} [procRoot='/proc'] alternative /proc root (tests, containerised deployments)
- * @property {bigint|string|number} [nowTaiNs] fixed "now" in TAI ns instead of the wall clock (tests)
+ * @property {string} [procRoot='/proc'] alternative /proc root (containerised deployments)
+ * @property {bigint|string|number} [nowTaiNs] fixed "now" in TAI ns instead of the wall clock
  * @property {Map<number, Promise<string|null>>} [containerIds] shared PID → container id cache
  */
 

@@ -104,7 +104,7 @@ network. See [Configuration](https://cloudflex-broadcast.github.io/easy-mxl/conf
 ```sh
 git clone https://github.com/CLOUDflex-broadcast/easy-mxl.git && cd easy-mxl
 npm ci
-npm test              # build + unit tests, no Docker needed
+npm run build         # compile TypeScript to dist/
 npm run dev           # rebuild on change and restart
 ```
 

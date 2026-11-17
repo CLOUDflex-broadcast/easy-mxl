@@ -94,7 +94,6 @@ deploy/easy-mxl.service      systemd unit
 deploy/Dockerfile            optional containerised EASY MXL
 scripts/install-ubuntu24.sh  host install helper
 scripts/copy-static.ts       copies non-TypeScript assets into dist/
-test/*.test.ts               node:test suites compiled into dist/test/
 docs/DESIGN.md               this file
 README.md
 ```
@@ -218,7 +217,7 @@ export function parseCgroupContainerId(text: string) -> string|null             
 export async function containerIdForPid(pid, procRoot = '/proc') -> string|null
 ```
 
-`findLocksForFile` must match **only FLOCK entries**. Tests feed sample `/proc/locks` text.
+`findLocksForFile` must match **only FLOCK entries**.
 
 ### 4.4 `src/mxl/flows.ts`
 
@@ -302,7 +301,7 @@ users can see stray directories; they are flagged in the UI.
 ## 5. Docker modules
 
 All functions take the `docker` (Dockerode instance) as first argument — no module‑level
-singleton — so tests can pass fakes.
+singleton — so callers can pass fakes.
 
 ### 5.1 `src/docker/client.ts`
 
@@ -376,7 +375,7 @@ export async function findHostPortUsage(docker, hostPort, protocol='tcp') -> { i
 }
 ```
 
-`buildCreateOptions` (pure, thoroughly unit‑tested) produces:
+`buildCreateOptions` (pure) produces:
 
 * `Image`, `name`, `Hostname` (= container name), `Env` (`KEY=VALUE` strings; includes
   `<domainMount.envVar>=<containerPath>` when set), `Cmd`/`Entrypoint` (after `{{param}}`
@@ -631,19 +630,7 @@ frontend under ~2500 lines. No external CDN.
   -v /dev/shm:/dev/shm -p 9700:9700 easy-mxl` and the reason for `--pid=host` (/proc/locks
   PIDs → container mapping).
 
-## 11. Testing
-
-`npm test` → `node --test test/`. No network, no Docker required. Tests use `node:test` +
-`node:assert/strict`, temp dirs via `fs.mkdtemp`, and fake Dockerode objects (plain objects
-with the methods used). An **integration** test file `test/integration.docker.test.ts` runs
-only when `EASY_MXL_IT=1` and a daemon is reachable: it starts a `busybox` container that
-creates a fake flow (`flow_def.json` + 2048‑byte `data`) and holds `flock -s` on `data`,
-then asserts the flow is `active` and the writer maps to that container.
-
-Fixtures live in `test/fixtures/` (sample `/proc/locks`, `/proc/<pid>/cgroup`, Docker
-inspect JSON, flow_def examples copied from the MXL repo).
-
-## 12. Non‑goals (v0.1)
+## 11. Non‑goals (v0.1)
 
 Docker Compose file import, multi‑host, user accounts/RBAC, TLS termination (put nginx or
 Caddy in front), editing flow_def.json, NMOS registry integration.

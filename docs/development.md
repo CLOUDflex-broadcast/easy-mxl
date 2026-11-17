@@ -20,7 +20,6 @@ public/                frontend TypeScript and static HTML/CSS
 catalog/default.json   built-in app catalog
 deploy/                systemd unit, env example, Dockerfile
 scripts/               install-ubuntu24.sh, copy-static.ts
-test/                  TypeScript node:test suites and fixtures
 docs/                  this documentation (MkDocs) and DESIGN.md
 dist/                  generated runnable JavaScript (created by `npm run build`)
 ```
@@ -33,17 +32,9 @@ Node.js >= 20.10. Everything else is Node built-ins. The compiled entry point is
 
 ```sh
 npm run build       # compile TypeScript and copy runtime assets to dist/
-npm test            # build, then run node:test - no Docker or network required
 npm run typecheck   # validate the TypeScript project without emitting files
 npm run dev         # rebuild on TypeScript changes and restart the compiled server
-EASY_MXL_IT=1 npm test   # additionally runs test/integration.docker.test.ts against the local daemon (busybox)
 ```
-
-Tests use `node:test` and `node:assert/strict` with temp directories, the fixtures in
-`test/fixtures/` (sample `/proc/locks`, cgroup files, Docker inspect output, real flow headers)
-and fake Dockerode objects. The integration test is skipped unless `EASY_MXL_IT=1`; it starts
-throwaway `busybox` containers that create a fake flow and hold `flock -s` on its `data` file,
-then asserts that the flow is `active` and the writer maps to that container.
 
 The module contract - file paths, function signatures, data shapes and the MXL facts the
 implementation relies on - is the [design contract](DESIGN.md). Changes to a module's public
@@ -54,13 +45,13 @@ API start there.
 1. Add the app object to `catalog/default.json` (schema and field table under
    [Apps](apps.md#adding-your-own-apps); the compose file of the hands-on exercise is the
    usual source for image, ports, mounts and environment).
-2. Run `npm test`: the catalog tests load and validate the built-in file.
-3. Start EASY MXL, launch the app against a domain and check **Open UI**, the flows and the
-   writer detection.
+2. Start EASY MXL: the catalog is validated at startup, and an invalid entry stops the server
+   with a message naming the app and the field.
+3. Launch the app against a domain and check **Open UI**, the flows and the writer detection.
 4. Add the row to the [catalog table](apps.md#the-built-in-catalog) in the documentation.
 
 While iterating, keep the entry in a separate file and load it with `--catalog my-app.json`;
-an entry with the same `id` overrides the built-in one, so you can test a change without
+an entry with the same `id` overrides the built-in one, so you can try a change without
 editing `default.json`.
 
 ## Documentation
@@ -78,7 +69,7 @@ Docs deploy to <https://cloudflex-broadcast.github.io/easy-mxl/> on every push t
 
 ## Release process
 
-1. Make sure `main` is green (`npm test`, `npm run typecheck`).
+1. Make sure `main` is green (`npm run typecheck`, `npm run build`).
 2. Bump the version; `npm version` updates `package.json` and `package-lock.json`, commits and
    creates the tag `v<version>`:
 
@@ -88,7 +79,7 @@ Docs deploy to <https://cloudflex-broadcast.github.io/easy-mxl/> on every push t
     ```
 
 3. The release workflow runs on the tag: it verifies that the tag matches the version in
-   `package.json`, runs the tests, builds the release tarball `easy-mxl-<version>.tar.gz`
+   `package.json`, type-checks, builds the release tarball `easy-mxl-<version>.tar.gz`
    (prebuilt: `dist/` plus production `node_modules`, with the `.release-prebuilt` marker
    the installer recognises), publishes the GitHub Release with the tarball, `SHA256SUMS` and
    `install.sh`, and pushes the container image `ghcr.io/cloudflex-broadcast/easy-mxl` tagged
