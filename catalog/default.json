@@ -29,13 +29,27 @@
   {
     "id": "mediamtx",
     "name": "MediaMTX (WebRTC relay)",
-    "description": "WHIP/WHEP relay used by MXL to WebRTC and WebRTC to MXL. Runs with host networking so ICE candidates carry the real host IP (ports 8554 RTSP, 8889 WebRTC, 8189/udp ICE).",
+    "description": "WHIP/WHEP relay used by MXL to WebRTC and WebRTC to MXL. Runs with host networking so ICE candidates carry the real host IP; it binds 8554 (RTSP), 8889 (WebRTC) and 8189/udp (ICE) on the host unless you change them.",
     "category": "infrastructure",
     "image": "bluenviron/mediamtx:latest",
     "containerName": "mediamtx",
     "networkMode": "host",
+    "env": {
+      "MTX_RTSPADDRESS": ":{{rtspPort}}",
+      "MTX_RTSPTRANSPORTS": "tcp",
+      "MTX_WEBRTCADDRESS": ":{{webrtcPort}}",
+      "MTX_WEBRTCLOCALUDPADDRESS": ":{{iceUdpPort}}",
+      "MTX_RTMP": "no",
+      "MTX_HLS": "no",
+      "MTX_SRT": "no"
+    },
+    "params": [
+      { "key": "webrtcPort", "label": "WebRTC port (WHIP/WHEP, TCP)", "default": "8889", "port": "tcp", "help": "HTTP port the WebRTC apps and the browser talk to. The WebRTC apps must be launched with the same value." },
+      { "key": "iceUdpPort", "label": "ICE port (UDP)", "default": "8189", "port": "udp", "help": "UDP port that carries the WebRTC media." },
+      { "key": "rtspPort", "label": "RTSP port (TCP)", "default": "8554", "port": "tcp", "help": "RTSP access to the relayed streams (TCP transport only)." }
+    ],
     "restartPolicy": "unless-stopped",
-    "notes": "No web UI of its own. Launched automatically as a dependency of mxl2webrtc and webrtc2mxl.",
+    "notes": "No web UI of its own. Launched automatically as a dependency of mxl2webrtc and webrtc2mxl. Only the listeners the WebRTC apps need are enabled (RTMP, HLS and SRT are off). If another MediaMTX or media server already uses the default ports on this host, change the ports here and launch the WebRTC apps with the same WebRTC port.",
     "source": "https://github.com/cbcrc/mxl-hands-on/blob/main/docker/exercise-4/docker-compose.yml"
   },
   {
@@ -52,9 +66,12 @@
     ],
     "domainMount": { "containerPath": "/mxl-domain", "readOnly": true, "envVar": "MXL_DOMAIN" },
     "env": {
-      "MEDIAMTX_WHIP_URL": "http://host.docker.internal:8889/mxl2webrtc/whip",
-      "MEDIAMTX_WEBRTC_URL": "http://localhost:8889"
+      "MEDIAMTX_WHIP_URL": "http://host.docker.internal:{{webrtcPort}}/mxl2webrtc/whip",
+      "MEDIAMTX_WEBRTC_URL": "http://localhost:{{webrtcPort}}"
     },
+    "params": [
+      { "key": "webrtcPort", "label": "MediaMTX WebRTC port", "default": "8889", "port": "tcp", "help": "WHIP/WHEP port of the MediaMTX relay on this host. A relay that is launched as a dependency listens on this port; a relay that is already running must use it." }
+    ],
     "extraHosts": [ "host.docker.internal:host-gateway" ],
     "requires": [ "mediamtx" ],
     "restartPolicy": "unless-stopped",
@@ -140,9 +157,12 @@
     "ports": [ { "containerPort": 9600, "hostPort": 9606, "protocol": "tcp" } ],
     "domainMount": { "containerPath": "/mxl-domain", "readOnly": false, "envVar": "MXL_DOMAIN" },
     "env": {
-      "MEDIAMTX_WHEP_URL": "http://host.docker.internal:8889/webrtc2mxl/whep",
-      "MEDIAMTX_WHIP_URL": "http://localhost:8889/webrtc2mxl/whip"
+      "MEDIAMTX_WHEP_URL": "http://host.docker.internal:{{webrtcPort}}/webrtc2mxl/whep",
+      "MEDIAMTX_WHIP_URL": "http://localhost:{{webrtcPort}}/webrtc2mxl/whip"
     },
+    "params": [
+      { "key": "webrtcPort", "label": "MediaMTX WebRTC port", "default": "8889", "port": "tcp", "help": "WHIP/WHEP port of the MediaMTX relay on this host. A relay that is launched as a dependency listens on this port; a relay that is already running must use it." }
+    ],
     "extraHosts": [ "host.docker.internal:host-gateway" ],
     "requires": [ "mediamtx" ],
     "restartPolicy": "unless-stopped",

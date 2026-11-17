@@ -8,6 +8,7 @@ import { log } from '../log.js';
 import { LABELS } from './containers.js';
 import { imagePresent, listLocalImages, pullImage } from './images.js';
 import { CONTAINER_NAME_RE, VOLUME_NAME_RE, expandPorts, imageRepositoryOf, parseByteSize, renderTemplate } from '../catalog.js';
+import { probeListening } from '../portprobe.js';
 
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const VERSION_LABEL = 'easy-mxl.version';
@@ -69,7 +70,30 @@ function resolveTemplateVars(app, params, builtins = {}) {
       throw bad('missing_param', `Parameter "${p.label || p.key}" is required`, { key: p.key });
     }
   }
+  const seenPorts = new Map();
+  for (const p of portParams(app)) {
+    const raw = vars[p.key].trim();
+    const port = /^\d+$/.test(raw) ? Number(raw) : NaN;
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw bad('invalid_param', `Parameter "${p.label || p.key}" must be a port number between 1 and 65535 (got ${JSON.stringify(vars[p.key])})`, { key: p.key, value: vars[p.key] });
+    }
+    vars[p.key] = String(port);
+    const spec = `${port}/${p.port}`;
+    if (seenPorts.has(spec)) {
+      throw bad('duplicate_port', `Parameters "${seenPorts.get(spec)}" and "${p.label || p.key}" both use port ${spec}`, { key: p.key, port, protocol: p.port });
+    }
+    seenPorts.set(spec, p.label || p.key);
+  }
   return vars;
+}
+
+/**
+ * Params declared as port numbers (`params[].port` = `tcp` | `udp`).
+ * @param {object} app
+ * @returns {{ key: string, label?: string, port: string }[]}
+ */
+function portParams(app) {
+  return (app.params || []).filter((p) => p && typeof p.key === 'string' && (p.port === 'tcp' || p.port === 'udp'));
 }
 
 /**
@@ -280,7 +304,7 @@ function validatePolicies(app, p) {
  * @param {object} app catalog App
  * @param {object} params LaunchParams (DESIGN.md §5.4, §13.2)
  * @param {{ domain: { name: string, path: string }|null, config?: { version?: string } }} ctx
- * @returns {{ name: string, image: string, createOptions: object }}
+ * @returns {{ name: string, image: string, createOptions: object, hostNetworkPorts: { key: string, label: string, port: number, protocol: 'tcp'|'udp' }[] }}
  * @throws {HttpError} 400 on validation failures
  */
 export function buildCreateOptions(app, params = {}, ctx = {}) {
@@ -369,7 +393,38 @@ export function buildCreateOptions(app, params = {}, ctx = {}) {
   if (entrypoint) createOptions.Entrypoint = entrypoint;
   if (typeof app.user === 'string' && app.user) createOptions.User = app.user;
 
-  return { name, image, createOptions };
+  // A host-networked container binds its ports straight on the host: report the ones chosen
+  // through port params so the launch can check them before the container is created.
+  const hostNetworkPorts = hostNetwork
+    ? portParams(app).map((spec) => ({ key: spec.key, label: spec.label || spec.key, port: Number(vars[spec.key]), protocol: spec.port }))
+    : [];
+
+  return { name, image, createOptions, hostNetworkPorts };
+}
+
+/**
+ * Refuse to launch a host-networked app onto a port that is already bound on this host.
+ * Without the check the container starts, its server fails to bind and (with a restart
+ * policy) keeps restarting next to the service that owns the port.
+ *
+ * @param {object} app catalog App
+ * @param {{ key: string, label: string, port: number, protocol: 'tcp'|'udp' }[]} ports `buildCreateOptions(...).hostNetworkPorts`
+ * @param {(port: number, protocol: 'tcp'|'udp') => Promise<boolean>} [probe] defaults to a bind probe on this host
+ * @returns {Promise<void>}
+ * @throws {HttpError} 409 `port_in_use` (details `{ app, port, protocol, param, ports }`)
+ */
+export async function assertHostNetworkPortsFree(app, ports, probe = probeListening) {
+  const list = Array.isArray(ports) ? ports : [];
+  const busy = (await Promise.all(list.map(async (p) => ((await probe(p.port, p.protocol)) ? p : null)))).filter(Boolean);
+  if (busy.length === 0) return;
+  const names = busy.map((p) => `${p.port}/${p.protocol} (${p.label})`).join(', ');
+  throw new HttpError(409, 'port_in_use', `App "${app.id}" uses host networking and would bind ${busy.length === 1 ? 'port' : 'ports'} ${names}, already in use on this host. Choose ${busy.length === 1 ? 'another port' : 'other ports'} in the app parameters or stop the service that holds ${busy.length === 1 ? 'it' : 'them'}.`, {
+    app: app.id,
+    port: busy[0].port,
+    protocol: busy[0].protocol,
+    param: busy[0].key,
+    ports: busy.map((p) => ({ port: p.port, protocol: p.protocol, param: p.key })),
+  });
 }
 
 /**
@@ -491,8 +546,30 @@ async function resolveDomain(app, params, ctx, hooks) {
 }
 
 /**
+ * Param values a dependency inherits from the app that requires it: every param key that
+ * both catalog entries declare (e.g. the relay port a WebRTC app points at and the port the
+ * relay listens on), with the parent's launch value or default.
+ * @param {object} parent
+ * @param {object} depApp
+ * @param {object} params parent LaunchParams
+ * @returns {Record<string, string>}
+ */
+function sharedParams(parent, depApp, params) {
+  const given = params.params && typeof params.params === 'object' ? params.params : {};
+  const depKeys = new Set((depApp.params || []).map((p) => p && p.key));
+  const out = {};
+  for (const spec of parent.params || []) {
+    if (!spec || typeof spec.key !== 'string' || !depKeys.has(spec.key)) continue;
+    const value = given[spec.key] ?? spec.default;
+    if (value !== undefined && value !== null) out[spec.key] = String(value);
+  }
+  return out;
+}
+
+/**
  * Make sure a required app is running: skip when running, start when stopped,
- * launch recursively when absent.
+ * launch recursively when absent. A launched dependency gets the parent's values for the
+ * params both declare ({@link sharedParams}).
  *
  * @returns {Promise<{ app: string, id: string, name: string, action: 'started'|'created'|'already-running' }[]>}
  */
@@ -557,7 +634,7 @@ async function ensureDependency(docker, parent, depId, params, ctx, hooks, onPro
   onProgress('dependency', { app: depId, action: 'launching' });
   let result;
   try {
-    result = await launchApp(docker, depApp, { domain: params.domain ?? null, pull: params.pull, launchRequires: true }, ctx, hooks);
+    result = await launchApp(docker, depApp, { domain: params.domain ?? null, pull: params.pull, launchRequires: true, params: sharedParams(parent, depApp, params) }, ctx, hooks);
   } catch (err) {
     if (err instanceof HttpError && err.code === 'name_conflict') {
       throw new HttpError(409, 'dependency_conflict', `Dependency "${depId}": ${err.message}`, { app: depId, ...(err.details || {}) });
@@ -570,12 +647,14 @@ async function ensureDependency(docker, parent, depId, params, ctx, hooks, onPro
 }
 
 /**
- * Launch an app: resolve domain → dependencies → pull → name check → create → start.
+ * Launch an app: resolve domain → dependencies → pull → name check → host-network port
+ * check → create → start.
  *
  * `ctx`: `{ config, getDomain(name): Promise<Domain>, catalogById? }` — the
  * recursion adds `launchStack` (ids being launched) to detect dependency cycles.
- * `hooks`: `{ onProgress(stage, detail), catalogById?, listDomains? }` where
- * `stage` is `'pull'|'dependency'|'create'|'start'`.
+ * `hooks`: `{ onProgress(stage, detail), catalogById?, listDomains?, probePort? }` where
+ * `stage` is `'pull'|'dependency'|'create'|'start'` and `probePort(port, protocol)` replaces
+ * the host bind probe.
  *
  * @param {import('dockerode')} docker
  * @param {object} app catalog App
@@ -583,7 +662,8 @@ async function ensureDependency(docker, parent, depId, params, ctx, hooks, onPro
  * @param {object} [ctx]
  * @param {object} [hooks]
  * @returns {Promise<{ id: string, name: string, started: true, dependencies: { app: string, id: string, name: string, action: 'started'|'created'|'already-running' }[] }>}
- * @throws {HttpError} 400 validation, 404 domain/image, 409 `name_conflict` (details `{ id, name, state }`), 502 daemon errors
+ * @throws {HttpError} 400 validation, 404 domain/image, 409 `name_conflict` (details `{ id, name, state }`),
+ *   409 `port_in_use` (host-networked app, details `{ app, port, protocol, param, ports }`), 502 daemon errors
  */
 export async function launchApp(docker, app, params = {}, ctx = {}, hooks = {}) {
   if (!app || typeof app !== 'object' || typeof app.id !== 'string') {
@@ -606,7 +686,7 @@ export async function launchApp(docker, app, params = {}, ctx = {}, hooks = {}) 
   }
 
   const domain = await resolveDomain(app, p, c, h);
-  const { name, image, createOptions } = buildCreateOptions(app, p, { domain, config: c.config || {} });
+  const { name, image, createOptions, hostNetworkPorts } = buildCreateOptions(app, p, { domain, config: c.config || {} });
 
   const dependencies = [];
   if (p.launchRequires !== false) {
@@ -632,6 +712,7 @@ export async function launchApp(docker, app, params = {}, ctx = {}, hooks = {}) 
   if (conflict) {
     throw new HttpError(409, 'name_conflict', `A container named "${name}" already exists (${conflict.state})`, conflict);
   }
+  await assertHostNetworkPortsFree(app, hostNetworkPorts, typeof h.probePort === 'function' ? h.probePort : undefined);
 
   onProgress('create', { name, image });
   let container;

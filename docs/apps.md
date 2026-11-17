@@ -14,13 +14,13 @@ All FastAPI apps serve their UI and Swagger (`/docs`) on container port 9600. Th
 |---|---|---|---|---|---|
 | `test-generator` | Test Generator | `ghcr.io/cbcrc/test-generator:latest` | 9600 -> 9600 | source | `/mxl-domain` rw |
 | `mxl-info-gui` | MXL Info GUI | `ghcr.io/cbcrc/mxl-info-gui:latest` | 9699 -> 9600 | monitoring | `/mxl-domain` ro |
-| `mediamtx` | MediaMTX (WebRTC relay) | `bluenviron/mediamtx:latest` | host network (8554, 8889, 8189/udp) | infrastructure | no domain, no UI; auto-launched by the WebRTC apps |
-| `mxl2webrtc` | MXL to WebRTC | `ghcr.io/cbcrc/mxl2webrtc:latest` | 9601 -> 9600, 8200-8210/udp | output | `/mxl-domain` ro; requires `mediamtx`; installs x264 on first start |
+| `mediamtx` | MediaMTX (WebRTC relay) | `bluenviron/mediamtx:latest` | host network (8889, 8189/udp, 8554; [configurable](#mediamtx-ports)) | infrastructure | no domain, no UI; auto-launched by the WebRTC apps; params `webrtcPort`, `iceUdpPort`, `rtspPort` |
+| `mxl2webrtc` | MXL to WebRTC | `ghcr.io/cbcrc/mxl2webrtc:latest` | 9601 -> 9600, 8200-8210/udp | output | `/mxl-domain` ro; requires `mediamtx`; param `webrtcPort` (default 8889); installs x264 on first start |
 | `file-player` | File Player | `ghcr.io/cbcrc/file-player:latest` | 9602 -> 9600 | source | `/mxl-domain` rw; host clips folder -> `/home/file` ro (required); installs `gstreamer1.0-libav` on first start |
 | `hls2mxl` | HLS to MXL Gateway | `ghcr.io/cbcrc/hls2mxl:latest` | 9603 -> 9600 | source | `/mxl-domain` rw |
 | `input-selector` | Input Selector | `ghcr.io/cbcrc/input-selector:latest` | 9604 -> 9600 | processing | `/mxl-domain` rw; param `maxInputs` (default 3) |
 | `html5-keyer` | HTML5 Keyer | `ghcr.io/cbcrc/html5-keyer:latest` | 9605 -> 9600 | processing | `/mxl-domain` rw; `shm_size` 1 GB; param `defaultMode` (`key` / `prompt`) |
-| `webrtc2mxl` | WebRTC to MXL | `ghcr.io/cbcrc/webrtc2mxl:latest` | 9606 -> 9600 | source | `/mxl-domain` rw; requires `mediamtx` |
+| `webrtc2mxl` | WebRTC to MXL | `ghcr.io/cbcrc/webrtc2mxl:latest` | 9606 -> 9600 | source | `/mxl-domain` rw; requires `mediamtx`; param `webrtcPort` (default 8889) |
 | `mxl-writer` | Test Writer (mxl-gst-testsrc) | `ghcr.io/cbcrc/mxl-writer:latest` | - | tools | `/domain` rw, user 1000:1000; params `groupHint`, `overlayText`; fixed flow ids, one instance per domain |
 | `mxl-reader` | Reader / mxl-info shell | `ghcr.io/cbcrc/mxl-reader:latest` | - | tools | `/domain` ro, user 1000:1000; open a terminal and run `/app/mxl-info -d /domain -l` |
 | `mxl-clip-player` | Clip Player (looping filesrc) | `ghcr.io/cbcrc/mxl-clip-player:latest` | - | tools | `/domain` rw; host clip file -> `/app/clip.ts` ro (required); runs as root, installs `gstreamer1.0-libav` on first start |
@@ -55,7 +55,8 @@ container starts for the first time, so that container needs network access once
       Clip Player's `.ts` file). Required paths must be absolute; `/`, `/etc`, `/proc`,
       `/sys`, `/dev`, `/boot` and the Docker socket are refused.
     - **Parameters** - the app's template values (group hint, overlay text, number of input
-      slots, keyer mode, timezone).
+      slots, keyer mode, timezone, MediaMTX ports). Port parameters of a host-networked app
+      such as `mediamtx` are checked like host ports while you type.
     - **Also launch required apps** - checked by default for apps with dependencies such as
       `mediamtx`.
     - **Advanced** - *Extra environment* (`KEY=VALUE` lines, merged over the app defaults)
@@ -67,8 +68,37 @@ container starts for the first time, so that container needs network access once
 
 Dependencies (`requires` in the catalog) are resolved first, in the same domain: a running
 container of the required app is reused, a stopped one is started, a missing one is launched
-with its defaults. That is how MediaMTX comes up automatically for MXL to WebRTC and WebRTC to
-MXL.
+with its defaults - except for parameters that both apps declare under the same key, which the
+dependency takes over from the app you launch. That is how MediaMTX comes up automatically
+for MXL to WebRTC and WebRTC to MXL, on the WebRTC port set in their form.
+
+### MediaMTX ports
+
+MediaMTX runs with host networking, so that the WebRTC ICE candidates carry the real host
+address. It therefore binds its ports directly on the host: **8889/tcp** (WebRTC, WHIP/WHEP),
+**8189/udp** (ICE) and **8554/tcp** (RTSP). Only these listeners are enabled; RTMP, HLS, SRT
+and the RTSP UDP transport are switched off in the catalog entry.
+
+Before a host-networked app is created, EASY MXL checks its ports on the host. If one is
+taken the launch stops with `409 port_in_use` and names the port, instead of leaving a
+container that restarts in a loop next to the service that owns the port.
+
+On a host that already runs MediaMTX or another media server on these ports, either:
+
+- **Run the relay on other ports.** Launch MediaMTX with different **WebRTC port**, **ICE
+  port** and **RTSP port** parameters, and launch MXL to WebRTC / WebRTC to MXL with the same
+  **MediaMTX WebRTC port**. When the relay is not running yet it is enough to set the port on
+  the WebRTC app: the relay it launches as a dependency listens on that port (the ICE and RTSP
+  ports keep their defaults, so launch MediaMTX yourself first when those collide as well).
+  Through the API: `{ "params": { "webrtcPort": "9889" } }`.
+- **Use the MediaMTX you already have.** Untick **Also launch required apps**
+  (`launchRequires: false`) and set **MediaMTX WebRTC port** to the WebRTC port of your
+  instance. The apps publish and read the paths `mxl2webrtc` and `webrtc2mxl` over WHIP/WHEP,
+  so that instance must accept them (the default MediaMTX configuration does) and must hand out
+  ICE candidates that the browser can reach. For a relay on another host, override the URLs
+  under **Advanced -> Extra environment** instead: `MEDIAMTX_WHIP_URL` and
+  `MEDIAMTX_WEBRTC_URL` for MXL to WebRTC, `MEDIAMTX_WHEP_URL` and `MEDIAMTX_WHIP_URL` for
+  WebRTC to MXL.
 
 If a container of the chosen name already exists - typically from the hands-on
 `docker compose` stack - the launch stops with `name_conflict` and the dialog offers
@@ -86,7 +116,9 @@ and manageable too, their domain is inferred from mounts under the domain root.
 !!! tip
     When EASY MXL itself runs in a container, `/api/ports/check` probes ports from inside that
     container, so the "already listening on this host" hint only reflects the EASY MXL
-    container. The container-binding check (which app publishes the port) still works.
+    container. The container-binding check (which app publishes the port) still works. The
+    same applies to the `port_in_use` check for host-networked apps: it only sees the host's
+    ports when EASY MXL runs on the host or with `--network host`.
 
 ## Adding your own apps
 
@@ -112,7 +144,7 @@ Fields (only `id`, `name`, `image` are required):
 | `ports[]` | `{ "containerPort", "hostPort", "protocol", "rangeEnd"? }` with protocol `tcp` or `udp`; `rangeEnd` publishes a range with the same offset |
 | `domainMount` | `{ "containerPath": "/mxl-domain", "readOnly": false, "envVar": "MXL_DOMAIN" }`; the selected domain is bind-mounted there and, when `envVar` is set, its container path exported under that name |
 | `env` | `{ "KEY": "value" }`; values may use `{{param}}` placeholders and the built-ins `{{containerName}}`, `{{domainName}}`, `{{domainContainerPath}}` |
-| `params[]` | `{ "key", "label", "default", "help" }` template values, editable in the dialog |
+| `params[]` | `{ "key", "label", "default", "help", "port"? }` template values, editable in the dialog. `"port": "tcp"` or `"udp"` marks the value as a port number: it is validated, and for a `networkMode: host` app it is checked on the host before launch (`409 port_in_use`). A param that an app and one of its `requires` both declare under the same key is passed on to the dependency when it is launched |
 | `hostPaths[]` | `{ "key", "label", "containerPath", "readOnly", "required", "default" }` host files or directories to bind-mount (`/`, `/etc`, `/proc`, `/sys`, `/dev`, `/boot` and the Docker socket are refused) |
 | `volumes[]` | `{ "name", "containerPath", "readOnly"? }` Docker named volumes; `name` may use placeholders, e.g. `"{{containerName}}-state"` |
 | `ipcMode` | `host`, `private`, `shareable`, `none` or `container:<name>` (Docker `--ipc`) |

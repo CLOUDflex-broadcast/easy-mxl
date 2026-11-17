@@ -90,6 +90,14 @@ form or stop the process using it (`ss -ltnp | grep 9600`). If a container of th
 already exists - typically from the hands-on `docker compose` stack - the launch reports
 `name_conflict` and offers **Start existing** or **Remove & relaunch**.
 
+### Launch fails with `port_in_use` (MediaMTX)
+
+MediaMTX uses host networking and binds 8889/tcp, 8189/udp and 8554/tcp on the host. When one
+of them is taken - usually by a MediaMTX or another media server that already runs there - the
+launch of MediaMTX, or of a WebRTC app that needs it, stops with `port_in_use` and names the
+port (`ss -ltnup | grep -E '8889|8189|8554'` shows the owner). Give the relay other ports or
+point the WebRTC apps at the existing server: see [MediaMTX ports](apps.md#mediamtx-ports).
+
 ### HTML5 Keyer crashes at start (Chromium "Bus error" / renderer gone)
 
 Chromium needs a 1 GB `/dev/shm` *inside its container*; the catalog sets `shmSize: "1g"`.

@@ -115,7 +115,10 @@ export async function openLaunchDialog({ appId = null, domain = null } = {}) {
 
     const ports = Array.isArray(app.ports) ? app.ports : [];
     if (app.networkMode === 'host') {
-      form.appendChild(el('div', { class: 'notice info' }, 'Host networking: the container shares the host network stack, no ports are published.'));
+      const configurable = (Array.isArray(app.params) ? app.params : []).some((p) => p && p.port);
+      form.appendChild(el('div', { class: 'notice info' }, configurable
+        ? 'Host networking: the container binds its ports directly on the host. Set them under Parameters; a port that is already in use stops the launch.'
+        : 'Host networking: the container shares the host network stack, no ports are published.'));
     } else if (ports.length) {
       form.appendChild(el('h3', { class: 'section', text: 'Host ports' }));
       const grid = el('div', { class: 'grid-2' });
@@ -150,6 +153,20 @@ export async function openLaunchDialog({ appId = null, domain = null } = {}) {
       form.appendChild(el('h3', { class: 'section', text: 'Parameters' }));
       const grid = el('div', { class: 'grid-2' });
       for (const spec of params) {
+        if (spec.port) {
+          // A port number; on a host-networked app the container binds it on the host, so check it.
+          const out = el('span', { class: 'warn-text', role: 'status' });
+          const input = el('input', { type: 'number', min: 1, max: 65535, class: 'mono', value: spec.default ?? '', 'aria-label': spec.label || spec.key });
+          f.params.push({ spec, input });
+          grid.appendChild(field(spec.label || spec.key, input, spec.help || null, out));
+          if (app.networkMode === 'host') {
+            const check = () => checkPort(input, spec.port, out);
+            input.addEventListener('change', check);
+            input.addEventListener('blur', check);
+            check();
+          }
+          continue;
+        }
         const input = el('input', { type: 'text', value: spec.default ?? '' });
         f.params.push({ spec, input });
         grid.appendChild(field(spec.label || spec.key, input, spec.help || null));
@@ -291,7 +308,13 @@ export async function openLaunchDialog({ appId = null, domain = null } = {}) {
     }
     if (f.params.length) {
       params.params = {};
-      for (const p of f.params) params.params[p.spec.key] = p.input.value;
+      for (const p of f.params) {
+        if (p.spec.port) {
+          const v = Number(p.input.value);
+          if (!Number.isInteger(v) || v < 1 || v > 65535) throw new Error(`${p.spec.label || p.spec.key} must be a port between 1 and 65535.`);
+        }
+        params.params[p.spec.key] = p.input.value;
+      }
     }
     const env = parseEnvLines(f.env.value);
     if (Object.keys(env).length) params.env = env;

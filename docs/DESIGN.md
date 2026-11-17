@@ -84,6 +84,7 @@ src/docker/terminal.ts       openTerminal()
 src/docker/events.ts         watchEvents()
 src/jobs.ts                  in-memory job registry (EventEmitter)
 src/catalog.ts               loadCatalog(paths) -> App[], validateApp(), resolveApp()
+src/portprobe.ts             probeListening(port, protocol): bind probe on this host
 src/server.ts                createServer(config, deps) -> { app, httpServer, start, stop }
 src/routes/*.js              express routers (health, apps, containers, domains, flows, jobs, images, ports)
 src/ws.ts                    WebSocket upgrade handling for /ws/*
@@ -368,7 +369,8 @@ export async function findHostPortUsage(docker, hostPort, protocol='tcp') -> { i
   name?: string,                       // container name override
   hostPorts?: { [containerPortSpec: string]: number },   // key like "9600/tcp"
   env?: { [k]: string },               // merged over app.env (after templating)
-  params?: { [key]: string },          // template values, merged over app.params[].default
+  params?: { [key]: string },          // template values, merged over app.params[].default;
+                                       // params[].port values must be port numbers
   hostPaths?: { [key]: string },       // host directory per app.hostPaths[].key
   launchRequires?: boolean,            // default true
   pull?: 'missing'|'always'            // default 'missing'
@@ -386,12 +388,22 @@ export async function findHostPortUsage(docker, hostPort, protocol='tcp') -> { i
   `<hostPath>:<containerPath>[:ro]` for hostPaths), `NetworkMode`, `ExtraHosts`, `ShmSize`
   (bytes; parse `1g`/`512m`/number), `RestartPolicy {Name}`, `Init` when `app.init`.
 * Validation → `HttpError(400)`: missing required hostPath, non‑absolute hostPath, hostPort
-  out of range, domain required but missing, invalid container name (`/^[a-zA-Z0-9][a-zA-Z0-9_.-]+$/`).
+  out of range, domain required but missing, invalid container name (`/^[a-zA-Z0-9][a-zA-Z0-9_.-]+$/`),
+  a port param that is not a port number (`invalid_param`) or two port params with the same
+  port and protocol (`duplicate_port`).
+* It also returns `hostNetworkPorts` (`[{ key, label, port, protocol }]`): the port params of a
+  `networkMode==='host'` app, i.e. the ports the container will bind on the host.
+
+`assertHostNetworkPortsFree(app, hostNetworkPorts, probe = probeListening)` throws
+`HttpError(409, 'port_in_use', { app, port, protocol, param, ports })` when one of them is
+already bound on this host. The launch route calls it before it creates the job.
 
 `launchApp` order: resolve domain → for each `app.requires` (if `launchRequires`): if a
 container labeled with that app is running → skip; if exists stopped → start; else launch it
-(recursively, same domain, defaults) → pull image if missing (or always) reporting progress →
-`checkNameConflict` → `HttpError(409, 'name_conflict', { id, name, state })` → create → start.
+(recursively, same domain, defaults plus the parent's values for params both apps declare
+under the same key) → pull image if missing (or always) reporting progress →
+`checkNameConflict` → `HttpError(409, 'name_conflict', { id, name, state })` →
+`assertHostNetworkPortsFree` → create → start.
 
 ### 5.5 `src/docker/logs.ts`
 
@@ -469,7 +481,8 @@ export function renderTemplate(str, vars) -> string             // {{key}} → v
   "tty": false, "stdinOpen": false, "init": false,
   "restartPolicy": "unless-stopped" | "no" | "always" | "on-failure",
   "hostPaths": [ { "key": "clips", "label": "Clips folder (.mp4/.ts)", "containerPath": "/home/file", "readOnly": true, "required": true, "default": "" } ],
-  "params": [ { "key": "overlayText", "label": "Overlay text", "default": "EBU DMF MXL", "help": "…" } ],
+  "params": [ { "key": "overlayText", "label": "Overlay text", "default": "EBU DMF MXL", "help": "…" },
+              { "key": "webrtcPort", "label": "WebRTC port", "default": "8889", "port": "tcp" } ],   // port: "tcp"|"udp" marks a port number
   "requires": ["mediamtx"],
   "notes": "free text shown in the launch dialog",
   "source": "https://github.com/cbcrc/mxl-hands-on/blob/main/docker/exercise-4/docker-compose.yml",
@@ -486,13 +499,13 @@ omitted — Docker picks the host platform):
 |---|---|---|---|---|
 | `test-generator` | ghcr.io/cbcrc/test-generator:latest | 9600→9600 | source | domainMount `/mxl-domain` (no envVar needed but set `MXL_DOMAIN` anyway) |
 | `mxl-info-gui` | ghcr.io/cbcrc/mxl-info-gui:latest | 9699→9600 | monitoring | |
-| `mediamtx` | bluenviron/mediamtx:latest | network host | infrastructure | no web UI; no domain mount |
-| `mxl2webrtc` | ghcr.io/cbcrc/mxl2webrtc:latest | 9601→9600, 8200‑8210/udp | output | requires mediamtx; env `MEDIAMTX_WHIP_URL=http://host.docker.internal:8889/mxl2webrtc/whip`, `MEDIAMTX_WEBRTC_URL=http://localhost:8889`; extraHosts |
+| `mediamtx` | bluenviron/mediamtx:latest | network host | infrastructure | no web UI; no domain mount; port params `webrtcPort`=8889/tcp, `iceUdpPort`=8189/udp, `rtspPort`=8554/tcp → env `MTX_WEBRTCADDRESS=:{{webrtcPort}}`, `MTX_WEBRTCLOCALUDPADDRESS=:{{iceUdpPort}}`, `MTX_RTSPADDRESS=:{{rtspPort}}`; `MTX_RTSPTRANSPORTS=tcp`, `MTX_RTMP=no`, `MTX_HLS=no`, `MTX_SRT=no` |
+| `mxl2webrtc` | ghcr.io/cbcrc/mxl2webrtc:latest | 9601→9600, 8200‑8210/udp | output | requires mediamtx; port param `webrtcPort`=8889; env `MEDIAMTX_WHIP_URL=http://host.docker.internal:{{webrtcPort}}/mxl2webrtc/whip`, `MEDIAMTX_WEBRTC_URL=http://localhost:{{webrtcPort}}`; extraHosts |
 | `file-player` | ghcr.io/cbcrc/file-player:latest | 9602→9600 | source | hostPath `clips` → `/home/file:ro` (required) |
 | `hls2mxl` | ghcr.io/cbcrc/hls2mxl:latest | 9603→9600 | source | |
 | `input-selector` | ghcr.io/cbcrc/input-selector:latest | 9604→9600 | processing | env `MAX_INPUTS={{maxInputs}}` param default `3` |
 | `html5-keyer` | ghcr.io/cbcrc/html5-keyer:latest | 9605→9600 | processing | shmSize 1g; extraHosts; env `KEYER_DEFAULT_MODE={{defaultMode}}` default `key` |
-| `webrtc2mxl` | ghcr.io/cbcrc/webrtc2mxl:latest | 9606→9600 | source | requires mediamtx; env `MEDIAMTX_WHEP_URL=http://host.docker.internal:8889/webrtc2mxl/whep`, `MEDIAMTX_WHIP_URL=http://localhost:8889/webrtc2mxl/whip`; extraHosts |
+| `webrtc2mxl` | ghcr.io/cbcrc/webrtc2mxl:latest | 9606→9600 | source | requires mediamtx; port param `webrtcPort`=8889; env `MEDIAMTX_WHEP_URL=http://host.docker.internal:{{webrtcPort}}/webrtc2mxl/whep`, `MEDIAMTX_WHIP_URL=http://localhost:{{webrtcPort}}/webrtc2mxl/whip`; extraHosts |
 | `mxl-writer` | ghcr.io/cbcrc/mxl-writer:latest | — | tools | user 1000:1000; domainMount `/domain`; cmd `["/app/mxl-gst-testsrc","-d","/domain","-g","{{groupHint}}","-v","/app/v210_flow.json","-a","/app/audio_flow.json","-t","{{overlayText}}"]`; params groupHint=`demo-app-writer`, overlayText=`EBU DMF MXL`; restart unless-stopped |
 | `mxl-reader` | ghcr.io/cbcrc/mxl-reader:latest | — | tools | user 1000:1000; domainMount `/domain` read‑only; tty+stdinOpen; default CMD (`watch mxl-info -d /domain -l`); notes: open a terminal and run `/app/mxl-info -d /domain -l` |
 | `mxl-clip-player` | ghcr.io/cbcrc/mxl-clip-player:latest | — | tools | domainMount `/domain`; hostPath `clip` (file) → `/app/clip.ts:ro` required; cmd `["-d","/domain","-i","/app/clip.ts"]`; runs as root (entrypoint installs libav) |

@@ -36,8 +36,9 @@ install, and a first walkthrough.
   repository script) and start EASY MXL with `--domain-root /Volumes/mxl`. On WSL 2
   `/dev/shm` may be disk-backed; use the `/Volumes/mxl` mount there.
 
-Default ports: 9700 (EASY MXL),, 9600-9606 and 9699 (app UIs),
-8554 / 8889 / 8189-udp (MediaMTX, host network), 8200-8210/udp (MXL to WebRTC direct mode).
+Default ports: 9700 (EASY MXL), 9600-9606 and 9699 (app UIs),
+8554 / 8889 / 8189-udp (MediaMTX, host network; [changeable](apps.md#mediamtx-ports) when the
+host already runs a media server), 8200-8210/udp (MXL to WebRTC direct mode).
 
 ## Install
 
