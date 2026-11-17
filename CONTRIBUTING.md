@@ -42,7 +42,7 @@ npm version minor -m "Release v%s"   # or patch / major
 git push --follow-tags
 ```
 
-The release workflow verifies that the tag matches `package.json`, type-checks,
+The release workflow verifies that the tag matches `package.json`, compiles the project,
 builds `easy-mxl-<version>.tar.gz`, publishes the GitHub Release (with
 `SHA256SUMS` and `install.sh`) and the Docker workflow pushes the versioned image
 to GHCR. The documentation site deploys automatically on pushes to `main`.

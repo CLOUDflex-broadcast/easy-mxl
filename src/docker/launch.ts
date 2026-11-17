@@ -5,9 +5,10 @@
 import { posix as path } from 'node:path';
 import { HttpError, toHttpError } from '../errors.js';
 import { log } from '../log.js';
+import { isLocalDockerEndpoint } from './client.js';
 import { LABELS } from './containers.js';
 import { imagePresent, listLocalImages, pullImage } from './images.js';
-import { CONTAINER_NAME_RE, VOLUME_NAME_RE, expandPorts, imageRepositoryOf, parseByteSize, renderTemplate } from '../catalog.js';
+import { CONTAINER_NAME_RE, VOLUME_NAME_RE, expandPorts, imageRepositoryOf, parseByteSize, placeholdersIn, renderTemplate } from '../catalog.js';
 import { probeListening } from '../portprobe.js';
 
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -54,7 +55,8 @@ function resolveName(app, params) {
  * @returns {Record<string, string>}
  */
 function resolveTemplateVars(app, params, builtins = {}) {
-  const vars = {};
+  // No prototype: a param key such as "__proto__" or "constructor" is an ordinary entry.
+  const vars = Object.create(null);
   for (const [key, value] of Object.entries(builtins)) vars[key] = value === undefined || value === null ? '' : String(value);
   for (const p of app.params || []) {
     if (p && typeof p.key === 'string' && p.default !== undefined && p.default !== null) vars[p.key] = String(p.default);
@@ -94,6 +96,23 @@ function resolveTemplateVars(app, params, builtins = {}) {
  */
 function portParams(app) {
   return (app.params || []).filter((p) => p && typeof p.key === 'string' && (p.port === 'tcp' || p.port === 'udp'));
+}
+
+/**
+ * Placeholder names that reach the container: those in `cmd`, `entrypoint` and in the app
+ * `env` values that the launch `env` does not replace or remove.
+ * @param {object} app
+ * @param {object} params
+ * @returns {Set<string>}
+ */
+function usedPlaceholders(app, params) {
+  const overridden = params.env && typeof params.env === 'object' ? params.env : {};
+  const templates = [
+    ...Object.entries(app.env || {}).filter(([key]) => !Object.hasOwn(overridden, key)).map(([, value]) => value),
+    ...(Array.isArray(app.cmd) ? app.cmd : []),
+    ...(Array.isArray(app.entrypoint) ? app.entrypoint : []),
+  ];
+  return new Set(templates.flatMap((t) => placeholdersIn(String(t))));
 }
 
 /**
@@ -394,9 +413,13 @@ export function buildCreateOptions(app, params = {}, ctx = {}) {
   if (typeof app.user === 'string' && app.user) createOptions.User = app.user;
 
   // A host-networked container binds its ports straight on the host: report the ones chosen
-  // through port params so the launch can check them before the container is created.
+  // through port params so the launch can check them before the container is created. A port
+  // param counts only while a template still carries it into the container; when the launch
+  // `env` replaces every variable that used it, the listener is configured by hand.
   const hostNetworkPorts = hostNetwork
-    ? portParams(app).map((spec) => ({ key: spec.key, label: spec.label || spec.key, port: Number(vars[spec.key]), protocol: spec.port }))
+    ? portParams(app)
+      .filter((spec) => usedPlaceholders(app, p).has(spec.key))
+      .map((spec) => ({ key: spec.key, label: spec.label || spec.key, port: Number(vars[spec.key]), protocol: spec.port }))
     : [];
 
   return { name, image, createOptions, hostNetworkPorts };
@@ -407,14 +430,24 @@ export function buildCreateOptions(app, params = {}, ctx = {}) {
  * Without the check the container starts, its server fails to bind and (with a restart
  * policy) keeps restarting next to the service that owns the port.
  *
+ * The default probe binds the ports on the machine EASY MXL runs on, so the check is skipped
+ * when `config.dockerHost` is a remote endpoint: those ports say nothing about the Docker host.
+ *
  * @param {object} app catalog App
  * @param {{ key: string, label: string, port: number, protocol: 'tcp'|'udp' }[]} ports `buildCreateOptions(...).hostNetworkPorts`
- * @param {(port: number, protocol: 'tcp'|'udp') => Promise<boolean>} [probe] defaults to a bind probe on this host
+ * @param {{ config?: { dockerHost?: string|null }, probe?: (port: number, protocol: 'tcp'|'udp') => Promise<boolean> }} [opts]
+ *   `probe` replaces the local bind probe (and is always used when given)
  * @returns {Promise<void>}
  * @throws {HttpError} 409 `port_in_use` (details `{ app, port, protocol, param, ports }`)
  */
-export async function assertHostNetworkPortsFree(app, ports, probe = probeListening) {
+export async function assertHostNetworkPortsFree(app, ports, opts = {}) {
   const list = Array.isArray(ports) ? ports : [];
+  if (list.length === 0) return;
+  let probe = opts && opts.probe;
+  if (typeof probe !== 'function') {
+    if (!isLocalDockerEndpoint(opts && opts.config)) return;
+    probe = probeListening;
+  }
   const busy = (await Promise.all(list.map(async (p) => ((await probe(p.port, p.protocol)) ? p : null)))).filter(Boolean);
   if (busy.length === 0) return;
   const names = busy.map((p) => `${p.port}/${p.protocol} (${p.label})`).join(', ');
@@ -557,10 +590,10 @@ async function resolveDomain(app, params, ctx, hooks) {
 function sharedParams(parent, depApp, params) {
   const given = params.params && typeof params.params === 'object' ? params.params : {};
   const depKeys = new Set((depApp.params || []).map((p) => p && p.key));
-  const out = {};
+  const out = Object.create(null);
   for (const spec of parent.params || []) {
     if (!spec || typeof spec.key !== 'string' || !depKeys.has(spec.key)) continue;
-    const value = given[spec.key] ?? spec.default;
+    const value = (Object.hasOwn(given, spec.key) ? given[spec.key] : null) ?? spec.default;
     if (value !== undefined && value !== null) out[spec.key] = String(value);
   }
   return out;
@@ -712,7 +745,7 @@ export async function launchApp(docker, app, params = {}, ctx = {}, hooks = {}) 
   if (conflict) {
     throw new HttpError(409, 'name_conflict', `A container named "${name}" already exists (${conflict.state})`, conflict);
   }
-  await assertHostNetworkPortsFree(app, hostNetworkPorts, typeof h.probePort === 'function' ? h.probePort : undefined);
+  await assertHostNetworkPortsFree(app, hostNetworkPorts, { config: c.config, probe: h.probePort });
 
   onProgress('create', { name, image });
   let container;

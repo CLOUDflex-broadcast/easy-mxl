@@ -69,7 +69,7 @@ Docs deploy to <https://cloudflex-broadcast.github.io/easy-mxl/> on every push t
 
 ## Release process
 
-1. Make sure `main` is green (`npm run typecheck`, `npm run build`).
+1. Make sure `main` builds (`npm run build`) and CI is green.
 2. Bump the version; `npm version` updates `package.json` and `package-lock.json`, commits and
    creates the tag `v<version>`:
 
@@ -79,7 +79,7 @@ Docs deploy to <https://cloudflex-broadcast.github.io/easy-mxl/> on every push t
     ```
 
 3. The release workflow runs on the tag: it verifies that the tag matches the version in
-   `package.json`, type-checks, builds the release tarball `easy-mxl-<version>.tar.gz`
+   `package.json`, compiles the project, builds the release tarball `easy-mxl-<version>.tar.gz`
    (prebuilt: `dist/` plus production `node_modules`, with the `.release-prebuilt` marker
    the installer recognises), publishes the GitHub Release with the tarball, `SHA256SUMS` and
    `install.sh`, and pushes the container image `ghcr.io/cloudflex-broadcast/easy-mxl` tagged

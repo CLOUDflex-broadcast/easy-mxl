@@ -133,7 +133,7 @@ export function createAppsRouter(ctx) {
     if (conflict) {
       throw new HttpError(409, 'name_conflict', `A container named "${name}" already exists (${conflict.state})`, conflict);
     }
-    await assertHostNetworkPortsFree(app, hostNetworkPorts);
+    await assertHostNetworkPortsFree(app, hostNetworkPorts, { config: ctx.config });
 
     const launchCtx = {
       config: ctx.config,

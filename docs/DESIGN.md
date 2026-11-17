@@ -392,11 +392,15 @@ export async function findHostPortUsage(docker, hostPort, protocol='tcp') -> { i
   a port param that is not a port number (`invalid_param`) or two port params with the same
   port and protocol (`duplicate_port`).
 * It also returns `hostNetworkPorts` (`[{ key, label, port, protocol }]`): the port params of a
-  `networkMode==='host'` app, i.e. the ports the container will bind on the host.
+  `networkMode==='host'` app, i.e. the ports the container will bind on the host. A port param
+  whose placeholder no longer reaches the container (every `env` value that used it is
+  replaced by the launch `env`) is left out.
 
-`assertHostNetworkPortsFree(app, hostNetworkPorts, probe = probeListening)` throws
+`assertHostNetworkPortsFree(app, hostNetworkPorts, { config, probe? })` throws
 `HttpError(409, 'port_in_use', { app, port, protocol, param, ports })` when one of them is
-already bound on this host. The launch route calls it before it creates the job.
+already bound on this host (`probeListening`: IPv4 and IPv6 wildcard bind). It is skipped when
+`config.dockerHost` is a remote endpoint (`isLocalDockerEndpoint` in `src/docker/client.ts`).
+The launch route calls it before it creates the job.
 
 `launchApp` order: resolve domain → for each `app.requires` (if `launchRequires`): if a
 container labeled with that app is running → skip; if exists stopped → start; else launch it
@@ -561,7 +565,7 @@ EACCES/EPERM → 403, ECONNREFUSED/ENOENT on socket → 502 `docker_unavailable`
 | `GET /api/jobs` / `GET /api/jobs/:id` | | `Job[]` / `Job` |
 | `GET /api/images` | | `[{ ref, present, id, size, created }]` for catalog images |
 | `POST /api/images/pull` | `{ image }` | `202 { jobId }` |
-| `GET /api/ports/check` | `?port=9600&protocol=tcp` | `{ port, protocol, container: {id,name,state}|null, listening: boolean }` (listening = a quick `net` bind probe on `0.0.0.0` failed with EADDRINUSE) |
+| `GET /api/ports/check` | `?port=9600&protocol=tcp` | `{ port, protocol, container: {id,name,state}|null, listening: boolean }` (listening = a quick `net` bind probe on `0.0.0.0` or `[::]` failed with EADDRINUSE) |
 
 `:id` for containers accepts full id, short id or name (Dockerode resolves names).
 

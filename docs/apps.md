@@ -81,7 +81,9 @@ and the RTSP UDP transport are switched off in the catalog entry.
 
 Before a host-networked app is created, EASY MXL checks its ports on the host. If one is
 taken the launch stops with `409 port_in_use` and names the port, instead of leaving a
-container that restarts in a loop next to the service that owns the port.
+container that restarts in a loop next to the service that owns the port. The check follows
+the port parameters: a listener that you configure by hand through **Extra environment**
+(for example `MTX_RTSPADDRESS`) replaces the parameter and is not checked.
 
 On a host that already runs MediaMTX or another media server on these ports, either:
 
@@ -118,7 +120,9 @@ and manageable too, their domain is inferred from mounts under the domain root.
     container, so the "already listening on this host" hint only reflects the EASY MXL
     container. The container-binding check (which app publishes the port) still works. The
     same applies to the `port_in_use` check for host-networked apps: it only sees the host's
-    ports when EASY MXL runs on the host or with `--network host`.
+    ports when EASY MXL runs on the host or with `--network host`. With a remote Docker
+    endpoint (`--docker tcp://...` or `ssh://...`) the check is skipped, because the ports of
+    the EASY MXL machine say nothing about the Docker host.
 
 ## Adding your own apps
 
